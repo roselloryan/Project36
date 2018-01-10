@@ -4,6 +4,8 @@ import SpriteKit
 import GameplayKit
 
 class GameViewController: UIViewController {
+    
+    var count = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -24,6 +26,7 @@ class GameViewController: UIViewController {
             view.showsNodeCount = true
 //            view.showsPhysics = true
         }
+        git 
     }
 
     override var shouldAutorotate: Bool {
