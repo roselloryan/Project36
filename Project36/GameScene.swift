@@ -7,8 +7,18 @@ enum GameState {
     case showingLogo
     case playing
     case dead
+    
 }
 
+enum DifficultyLevel {
+    case easy
+    case hard
+}
+
+enum FacialFeature {
+    case smile
+    case blink
+}
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
     
@@ -19,6 +29,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             scoreLabel.text = "SCORE: \(score)"
         }
     }
+    
+    var difficultyLabel: SKLabelNode!
+    var easyLabel: SKLabelNode!
+    var hardLabel: SKLabelNode!
+    var difficultyLevel = DifficultyLevel.easy
+    
+    var faceFeatureLabel: SKLabelNode!
+    var smileLabel: SKLabelNode!
+    var blinkLabel: SKLabelNode!
+    var facialFeaturePreference = FacialFeature.smile
     
     var backgroundMusic: SKAudioNode!
     
@@ -35,6 +55,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         createGround()
         createScore()
         createLogos()
+        createDifficultyLevelUIComponents()
+        createFacialFeaturesUIComponents()
+        selectLabelForInitialDifficultyLevel()
+        selectLabelForInitialFacialFeature()
+        
         
         // Adding physics world gravity
         physicsWorld.gravity = CGVector(dx: 0.0, dy: -5.0)
@@ -42,6 +67,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Adding background music as node
         if let musicURL = Bundle.main.url(forResource: "music", withExtension: "m4a") {
+        
             backgroundMusic = SKAudioNode(url: musicURL)
             addChild(backgroundMusic)
         }
@@ -50,20 +76,58 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         
+        
         switch gameState {
         
         case .showingLogo:
-            gameState = .playing
             
-            let fadeOut = SKAction.fadeOut(withDuration: 0.5)
-            let remove = SKAction.removeFromParent()
-            let wait = SKAction.wait(forDuration: 0.5)
-            let activatePlayer = SKAction.run { [unowned self] in
-                self.player.physicsBody?.isDynamic = true
-                self.startRocks()
+            if wasEasyLabelTouched(touch: touches.first!) && difficultyLevel == .hard {
+                difficultyLevel = .easy
+                selectLabel(label: easyLabel)
+                deselectLabel(label: hardLabel)
+                return
             }
-            let sequence = SKAction.sequence([fadeOut, wait, activatePlayer, remove])
-            logo.run(sequence)
+            else if wasHardLabelTouched(touch: touches.first!) && difficultyLevel == .easy {
+                difficultyLevel = .hard
+                selectLabel(label: hardLabel)
+                deselectLabel(label: easyLabel)
+                return
+            }
+            else if wasBlinkLabelTouched(touch: touches.first!) && facialFeaturePreference == .smile {
+                facialFeaturePreference = .blink
+                selectLabel(label: blinkLabel)
+                deselectLabel(label: smileLabel)
+                
+                 NotificationCenter.default.post(Notification.init(name: Notification.Name("toggleFacialFeaturePreference")))
+                
+                return
+            }
+            else if wasSmileLabelTouched(touch: touches.first!) && facialFeaturePreference == .blink {
+                facialFeaturePreference = .smile
+                selectLabel(label: smileLabel)
+                deselectLabel(label: blinkLabel)
+                
+                NotificationCenter.default.post(Notification.init(name: Notification.Name("toggleFacialFeaturePreference")))
+                
+                return
+            }
+            else {
+                // Strating game no selection labels touched
+                gameState = .playing
+                
+                let fadeOut = SKAction.fadeOut(withDuration: 0.5)
+                let remove = SKAction.removeFromParent()
+                let wait = SKAction.wait(forDuration: 0.5)
+                let activatePlayer = SKAction.run { [unowned self] in
+                    self.player.physicsBody?.isDynamic = true
+                    self.startRocks()
+                }
+                let sequence = SKAction.sequence([fadeOut, wait, activatePlayer, remove])
+                logo.run(sequence)
+                selectionUILabelNodesPerformAction(action: SKAction.sequence([fadeOut, remove]))
+            }
+
+            
             
         case .playing:
             player.physicsBody?.velocity = CGVector(dx: 0.0, dy: 0.0)
@@ -74,8 +138,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
             // Reset game with new scene
             let scene = GameScene(fileNamed: "GameScene")!
+            scene.difficultyLevel = self.difficultyLevel
+            scene.facialFeaturePreference = self.facialFeaturePreference
             let transition = SKTransition.moveIn(with: .right, duration: 1.0)
             self.view?.presentScene(scene, transition: transition)
+            
         }
     }
 
@@ -165,7 +232,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    func createRocks() {
+    func createRocksForDifficultyLevel(level: DifficultyLevel) {
         
         // Make rocks
         let rockTexture = SKTexture(imageNamed: "rock")
@@ -195,11 +262,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Position some rocks
         let xPosition = frame.width + topRock.frame.width
         
-        let max = Int(frame.height / 3)
-        let rand = GKRandomDistribution(lowestValue: -100, highestValue: max)
+        let max = Int(frame.height / 2.6)
+        let rand = GKRandomDistribution(lowestValue: 0, highestValue: max)
         let yPostition = CGFloat(rand.nextInt())
         
-        let rockDistance: CGFloat = 70
+        
+        // Makes space bigger or smaller
+        let rockDistance: CGFloat = level == .easy ? 110 : 70
         
         // Move rocks from right to left and then remove
         topRock.position = CGPoint(x: xPosition, y: yPostition + topRock.size.height + rockDistance)
@@ -218,7 +287,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     func startRocks() {
         let create = SKAction.run { [unowned self] in
-            self.createRocks()
+            self.createRocksForDifficultyLevel(level: self.difficultyLevel)
         }
         
         let wait = SKAction.wait(forDuration: 3)
@@ -227,24 +296,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         run(repeatForever)
     }
-    
-    func createScore() {
-        scoreLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
-        scoreLabel.fontSize = 24
-        
-        scoreLabel.position = CGPoint(x: frame.maxX - 20, y: frame.maxY - 40)
-        scoreLabel.horizontalAlignmentMode = .right
-        scoreLabel.text = "SCORE: 0"
-        scoreLabel.fontColor = .black
-        
-        addChild(scoreLabel)
-    }
+
     
     override func update(_ currentTime: TimeInterval) {
         
         guard player != nil else { return }
+        guard let playerPhysicsBody = player.physicsBody else { return }
         
-        let value = player.physicsBody!.velocity.dy * 0.001
+        let value = playerPhysicsBody.velocity.dy * 0.001
         let rotate = SKAction.rotate(toAngle: value, duration: 0.1)
         
         player.run(rotate)
@@ -300,5 +359,251 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         gameOver.alpha = 0.0
         addChild(gameOver)
     }
+    
+    func createScore() {
+        scoreLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
+        scoreLabel.position = self.frame.size.height == 812 ? CGPoint(x: frame.maxX - 20, y: frame.maxY - 60) : CGPoint(x: frame.maxX - 20, y: frame.maxY - 40)
+        scoreLabel.horizontalAlignmentMode = .right
+        scoreLabel.fontColor = .black
+        scoreLabel.text = "SCORE: 0"
+        scoreLabel.fontSize = 24
+        addChild(scoreLabel)
+    }
+    
+    func createDifficultyLabel() {
+        
+        difficultyLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
+        difficultyLabel.horizontalAlignmentMode = .center
+        difficultyLabel.text = "Difficulty Level"
+        difficultyLabel.fontColor = .black
+        difficultyLabel.fontSize = 30
+        difficultyLabel.name = "difficultyLabel"
+        difficultyLabel.position = CGPoint(x: logo.frame.midX, y: logo.frame.minY - difficultyLabel.frame.size.height - 20)
+        
+        addChild(difficultyLabel)
+    }
+    
+    func createEasyLabel() {
+        
+        easyLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
+        easyLabel.horizontalAlignmentMode = .center
+        easyLabel.text = "Easy"
+        easyLabel.fontColor = .green
+        easyLabel.fontSize = 30
+        easyLabel.name = "easyLabel"
+        easyLabel.position = CGPoint(x: difficultyLabel.frame.midX - difficultyLabel.frame.width / 4, y: difficultyLabel.frame.minY - easyLabel.frame.height)
+        easyLabel.alpha = 0.6
+
+        addChild(easyLabel)
+    }
+    
+    func createHardLabel() {
+        
+        hardLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
+        hardLabel.horizontalAlignmentMode = .center
+        hardLabel.text = "Hard"
+        hardLabel.fontColor = .red
+        hardLabel.fontSize = 30
+        hardLabel.name = "hardLabel"
+        hardLabel.position = CGPoint(x: difficultyLabel.frame.midX + difficultyLabel.frame.width / 4, y:  difficultyLabel.frame.minY - easyLabel.frame.height)
+        hardLabel.alpha = 0.6
+        
+        addChild(hardLabel)
+    }
+    
+    func createDifficultyLevelUIComponents() {
+        
+        createDifficultyLabel()
+        createEasyLabel()
+        createHardLabel()
+    }
+    
+    func createFaceFeatureLabe() {
+        
+        faceFeatureLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
+        faceFeatureLabel.horizontalAlignmentMode = .center
+        faceFeatureLabel.text = "Face Feature"
+        faceFeatureLabel.fontColor = .black
+        faceFeatureLabel.fontSize = 30
+        faceFeatureLabel.name = "faceFeatureLabel"
+        faceFeatureLabel.position = CGPoint(x: difficultyLabel.frame.midX, y: difficultyLabel.frame.minY - easyLabel.frame.size.height - faceFeatureLabel.frame.size.height - 10)
+        
+        addChild(faceFeatureLabel)
+    }
+    
+    func createSmileLabel() {
+        
+        smileLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
+        smileLabel.horizontalAlignmentMode = .center
+        smileLabel.text = "Smile"
+        smileLabel.fontColor = .blue
+        smileLabel.fontSize = 30
+        smileLabel.name = "smileLabel"
+        smileLabel.position = CGPoint(x: difficultyLabel.frame.midX - difficultyLabel.frame.width / 4, y: faceFeatureLabel.frame.minY - smileLabel.frame.height - 10)
+        smileLabel.alpha = 0.6
+        
+        addChild(smileLabel)
+    }
+    
+    func createBlinkLabel() {
+        
+        blinkLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
+        blinkLabel.horizontalAlignmentMode = .center
+        blinkLabel.text = "Blink"
+        blinkLabel.fontColor = .blue
+        blinkLabel.fontSize = 30
+        blinkLabel.name = "blinkLabel"
+        blinkLabel.position = CGPoint(x: difficultyLabel.frame.midX + difficultyLabel.frame.width / 4, y: faceFeatureLabel.frame.minY - smileLabel.frame.height - 10)
+        blinkLabel.alpha = 0.6
+        
+        addChild(blinkLabel)
+    }
+    
+    
+    func createFacialFeaturesUIComponents() {
+        
+        createFaceFeatureLabe()
+        createSmileLabel()
+        createBlinkLabel()
+    }
+    
+    func selectionUILabelNodesPerformAction(action: SKAction) {
+        
+        difficultyLabel.run(action)
+        easyLabel.run(action)
+        hardLabel.run(action)
+        
+        faceFeatureLabel.run(action)
+        smileLabel.run(action)
+        blinkLabel.run(action)
+    }
+    
+    func selectLabelForInitialDifficultyLevel() {
+        if difficultyLevel == .easy {
+            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
+            easyLabel.alpha = 1.0
+            easyLabel.run(scaleAction)
+            hardLabel.fontColor = .gray
+        }
+        else {
+            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
+            hardLabel.alpha = 1.0
+            hardLabel.run(scaleAction)
+            easyLabel.fontColor = .gray
+        }
+    }
+    
+    func selectLabelForInitialFacialFeature() {
+        if facialFeaturePreference == .smile {
+            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
+            smileLabel.alpha = 1.0
+            smileLabel.run(scaleAction)
+            blinkLabel.fontColor = .gray
+        }
+        else {
+            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
+            blinkLabel.alpha = 1.0
+            blinkLabel.run(scaleAction)
+            smileLabel.fontColor = .gray
+        }
+    }
+    
+    func wasEasyLabelTouched(touch: UITouch) -> Bool {
+        
+        let positionInScene = touch.location(in: self)
+        let nodesTouched = self.nodes(at: positionInScene)
+        
+        if !nodesTouched.isEmpty {
+            if let name = nodesTouched.first?.name {
+                
+                if name == "easyLabel" {
+                    
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
+    func wasHardLabelTouched(touch: UITouch) -> Bool {
+        
+        let positionInScene = touch.location(in: self)
+        let nodesTouched = self.nodes(at: positionInScene)
+        
+        if !nodesTouched.isEmpty {
+            if let name = nodesTouched.first?.name {
+                
+                if name == "hardLabel" {
+                    
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
+    func wasSmileLabelTouched(touch: UITouch) -> Bool {
+        
+        let positionInScene = touch.location(in: self)
+        let nodesTouched = self.nodes(at: positionInScene)
+        
+        if !nodesTouched.isEmpty {
+            if let name = nodesTouched.first?.name {
+                
+                if name == "smileLabel" {
+                    
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
+    func wasBlinkLabelTouched(touch: UITouch) -> Bool {
+        
+        let positionInScene = touch.location(in: self)
+        let nodesTouched = self.nodes(at: positionInScene)
+        
+        if !nodesTouched.isEmpty {
+            if let name = nodesTouched.first?.name {
+                
+                if name == "blinkLabel" {
+                    
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    func selectLabel(label: SKLabelNode) {
+        label.run(SKAction.scale(by: 1.25, duration: 0.2))
+        label.alpha = 1.0
+        
+        switch label {
+            
+        case easyLabel:
+            easyLabel.fontColor = .green
+            
+        case hardLabel:
+            hardLabel.fontColor = .red
+            
+        case smileLabel:
+            smileLabel.fontColor = .blue
+            
+        case blinkLabel:
+            blinkLabel.fontColor = .blue
+            
+        default:
+            return
+        }
+    }
+    
+    func deselectLabel(label: SKLabelNode) {
+        label.run(SKAction.scale(by: 0.80, duration: 0.2))
+        label.fontColor = UIColor.gray
+        label.alpha = 0.6
+    }
+
 }
 
