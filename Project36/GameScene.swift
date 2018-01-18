@@ -30,15 +30,46 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    var difficultyLabel: SKLabelNode!
-    var easyLabel: SKLabelNode!
-    var hardLabel: SKLabelNode!
-    var difficultyLevel = DifficultyLevel.easy
+    // SpriteNode properties
+    var difficultyNode: SKSpriteNode!
+    var easyNode: SKSpriteNode!
+    var hardNode: SKSpriteNode!
     
-    var faceFeatureLabel: SKLabelNode!
-    var smileLabel: SKLabelNode!
-    var blinkLabel: SKLabelNode!
-    var facialFeaturePreference = FacialFeature.smile
+    var faceFeatureNode: SKSpriteNode!
+    var blinkNode: SKSpriteNode!
+    var smileNode: SKSpriteNode!
+    
+    var difficultyLevel = DifficultyLevel.easy {
+        
+        didSet {
+            if difficultyLevel != oldValue && logo != nil {
+                
+                if difficultyLevel == .easy {
+                    updateUIForEasySelected()
+                }
+                else {
+                    updateUIForHardSelected()
+                }
+            }
+        }
+    }
+    
+    var facialFeaturePreference = FacialFeature.smile {
+        
+        didSet {
+            if facialFeaturePreference != oldValue && logo != nil {
+               
+                postToggleFacialFeatureNotification()
+                
+                if facialFeaturePreference == .smile {
+                    updateUIForSmileSelected()
+                }
+                else {
+                    updateUIForBlinkSelected()
+                }
+            }
+        }
+    }
     
     var backgroundMusic: SKAudioNode!
     
@@ -57,8 +88,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         createLogos()
         createDifficultyLevelUIComponents()
         createFacialFeaturesUIComponents()
-        selectLabelForInitialDifficultyLevel()
-        selectLabelForInitialFacialFeature()
+        
+        
         
         
         // Adding physics world gravity
@@ -67,7 +98,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Adding background music as node
         if let musicURL = Bundle.main.url(forResource: "music", withExtension: "m4a") {
-        
+
+            print(musicURL)
+            
             backgroundMusic = SKAudioNode(url: musicURL)
             addChild(backgroundMusic)
         }
@@ -81,37 +114,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         case .showingLogo:
             
-            if wasEasyLabelTouched(touch: touches.first!) && difficultyLevel == .hard {
-                difficultyLevel = .easy
-                selectLabel(label: easyLabel)
-                deselectLabel(label: hardLabel)
-                return
-            }
-            else if wasHardLabelTouched(touch: touches.first!) && difficultyLevel == .easy {
-                difficultyLevel = .hard
-                selectLabel(label: hardLabel)
-                deselectLabel(label: easyLabel)
-                return
-            }
-            else if wasBlinkLabelTouched(touch: touches.first!) && facialFeaturePreference == .smile {
-                facialFeaturePreference = .blink
-                selectLabel(label: blinkLabel)
-                deselectLabel(label: smileLabel)
-                
-                 NotificationCenter.default.post(Notification.init(name: Notification.Name("toggleFacialFeaturePreference")))
-                
-                return
-            }
-            else if wasSmileLabelTouched(touch: touches.first!) && facialFeaturePreference == .blink {
-                facialFeaturePreference = .smile
-                selectLabel(label: smileLabel)
-                deselectLabel(label: blinkLabel)
-                
-                NotificationCenter.default.post(Notification.init(name: Notification.Name("toggleFacialFeaturePreference")))
-                
-                return
-            }
-            else {
+            if !wasSelectionNodeTouched(touch: touches.first!) {
                 // Strating game no selection labels touched
                 gameState = .playing
                 
@@ -126,8 +129,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 logo.run(sequence)
                 selectionUILabelNodesPerformAction(action: SKAction.sequence([fadeOut, remove]))
             }
-
-            
             
         case .playing:
             player.physicsBody?.velocity = CGVector(dx: 0.0, dy: 0.0)
@@ -142,7 +143,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             scene.facialFeaturePreference = self.facialFeaturePreference
             let transition = SKTransition.moveIn(with: .right, duration: 1.0)
             self.view?.presentScene(scene, transition: transition)
-            
         }
     }
 
@@ -219,7 +219,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             // Add ground physics. Keeps ground form responding to gravity and falling off screen
             ground.physicsBody = SKPhysicsBody(texture: groundTexture, size: groundTexture.size())
             ground.physicsBody?.isDynamic = false
-            
             
             addChild(ground)
             
@@ -350,17 +349,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     func createLogos() {
+        
         logo = SKSpriteNode(imageNamed: "logo")
-        logo.position = CGPoint(x: frame.midX, y: frame.midY)
+        logo.position = CGPoint(x: frame.midX, y: frame.midY + 40)
         addChild(logo)
         
         gameOver = SKSpriteNode(imageNamed: "gameover")
-        gameOver.position = CGPoint(x: frame.midX, y: frame.midY)
+        gameOver.position = CGPoint(x: frame.midX, y: frame.midY + 40)
         gameOver.alpha = 0.0
         addChild(gameOver)
     }
     
     func createScore() {
+        
         scoreLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
         scoreLabel.position = self.frame.size.height == 812 ? CGPoint(x: frame.maxX - 20, y: frame.maxY - 60) : CGPoint(x: frame.maxX - 20, y: frame.maxY - 40)
         scoreLabel.horizontalAlignmentMode = .right
@@ -370,240 +371,229 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(scoreLabel)
     }
     
-    func createDifficultyLabel() {
+    
+    // MARK: Selection Node methods
+    
+    func createDifficultyLevelNode() {
         
-        difficultyLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
-        difficultyLabel.horizontalAlignmentMode = .center
-        difficultyLabel.text = "Difficulty Level"
-        difficultyLabel.fontColor = .black
-        difficultyLabel.fontSize = 30
-        difficultyLabel.name = "difficultyLabel"
-        difficultyLabel.position = CGPoint(x: logo.frame.midX, y: logo.frame.minY - difficultyLabel.frame.size.height - 20)
-        
-        addChild(difficultyLabel)
+        difficultyNode = SKSpriteNode(imageNamed: "difficultyLevel")
+        difficultyNode.position = CGPoint(x: logo.frame.minX + difficultyNode.frame.width / 2, y: logo.frame.minY - difficultyNode.frame.height / 2 - 20)
+        difficultyNode.name = "difficultyNode"
+        addChild(difficultyNode)
     }
     
-    func createEasyLabel() {
+    func setEasyOnNode() {
         
-        easyLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
-        easyLabel.horizontalAlignmentMode = .center
-        easyLabel.text = "Easy"
-        easyLabel.fontColor = .green
-        easyLabel.fontSize = 30
-        easyLabel.name = "easyLabel"
-        easyLabel.position = CGPoint(x: difficultyLabel.frame.midX - difficultyLabel.frame.width / 4, y: difficultyLabel.frame.minY - easyLabel.frame.height)
-        easyLabel.alpha = 0.6
-
-        addChild(easyLabel)
+        if easyNode != nil {
+            easyNode.removeFromParent()
+        }
+        
+        easyNode = SKSpriteNode(imageNamed: "Easy_On")
+        easyNode.position = CGPoint(x: frame.midX - easyNode.frame.width / 2, y: difficultyNode.frame.minY - easyNode.frame.height / 2)
+        easyNode.name = "easyNode"
+        addChild(easyNode)
     }
     
-    func createHardLabel() {
+    func setEasyOffNode() {
         
-        hardLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
-        hardLabel.horizontalAlignmentMode = .center
-        hardLabel.text = "Hard"
-        hardLabel.fontColor = .red
-        hardLabel.fontSize = 30
-        hardLabel.name = "hardLabel"
-        hardLabel.position = CGPoint(x: difficultyLabel.frame.midX + difficultyLabel.frame.width / 4, y:  difficultyLabel.frame.minY - easyLabel.frame.height)
-        hardLabel.alpha = 0.6
+        if easyNode != nil {
+            easyNode.removeFromParent()
+        }
         
-        addChild(hardLabel)
+        easyNode = SKSpriteNode(imageNamed: "Easy_Off")
+        easyNode.position = CGPoint(x: frame.midX - easyNode.frame.width / 2, y: difficultyNode.frame.minY - easyNode.frame.height / 2)
+        easyNode.name = "easyNode"
+        addChild(easyNode)
+    }
+    
+    func setHardOnNode() {
+        
+        if hardNode != nil {
+            hardNode.removeFromParent()
+        }
+        
+        hardNode = SKSpriteNode(imageNamed: "Hard_On")
+        hardNode.position = CGPoint(x: frame.midX + hardNode.frame.width / 2, y: easyNode.position.y)
+        hardNode.name = "hardNode"
+        addChild(hardNode)
+    }
+    
+    func setHardOffNode() {
+        
+        if hardNode != nil {
+            hardNode.removeFromParent()
+        }
+        
+        hardNode = SKSpriteNode(imageNamed: "Hard_Off")
+        hardNode.position = CGPoint(x: frame.midX + hardNode.frame.width / 2, y: easyNode.position.y)
+        hardNode.name = "hardNode"
+        addChild(hardNode)
+    }
+    
+    func updateUIForEasySelected() {
+        setEasyOnNode()
+        setHardOffNode()
+    }
+    
+    func updateUIForHardSelected() {
+        setEasyOffNode()
+        setHardOnNode()
     }
     
     func createDifficultyLevelUIComponents() {
         
-        createDifficultyLabel()
-        createEasyLabel()
-        createHardLabel()
+        createDifficultyLevelNode()
+        
+        if difficultyLevel == .easy {
+            updateUIForEasySelected()
+        }
+        else {
+            updateUIForHardSelected()
+        }
     }
     
-    func createFaceFeatureLabe() {
+    func createFacialFeatureNode() {
         
-        faceFeatureLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
-        faceFeatureLabel.horizontalAlignmentMode = .center
-        faceFeatureLabel.text = "Face Feature"
-        faceFeatureLabel.fontColor = .black
-        faceFeatureLabel.fontSize = 30
-        faceFeatureLabel.name = "faceFeatureLabel"
-        faceFeatureLabel.position = CGPoint(x: difficultyLabel.frame.midX, y: difficultyLabel.frame.minY - easyLabel.frame.size.height - faceFeatureLabel.frame.size.height - 10)
-        
-        addChild(faceFeatureLabel)
+        faceFeatureNode = SKSpriteNode(imageNamed: "facialFeature")
+        faceFeatureNode.position = CGPoint(x: logo.frame.minX + faceFeatureNode.frame.width / 2, y: easyNode.frame.minY - faceFeatureNode.frame.height / 2 - 20)
+        faceFeatureNode.name = "faceFeatureNode"
+        addChild(faceFeatureNode)
     }
     
-    func createSmileLabel() {
+    func setSmileOnNode() {
         
-        smileLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
-        smileLabel.horizontalAlignmentMode = .center
-        smileLabel.text = "Smile"
-        smileLabel.fontColor = .blue
-        smileLabel.fontSize = 30
-        smileLabel.name = "smileLabel"
-        smileLabel.position = CGPoint(x: difficultyLabel.frame.midX - difficultyLabel.frame.width / 4, y: faceFeatureLabel.frame.minY - smileLabel.frame.height - 10)
-        smileLabel.alpha = 0.6
+        if smileNode != nil {
+            smileNode.removeFromParent()
+        }
         
-        addChild(smileLabel)
+        smileNode = SKSpriteNode.init(imageNamed: "Smile_On")
+        smileNode.position = CGPoint(x: frame.midX - smileNode.frame.width / 2, y: faceFeatureNode.frame.minY - smileNode.frame.height / 2)
+        smileNode.name = "smileNode"
+        addChild(smileNode)
     }
     
-    func createBlinkLabel() {
+    func setSmileOffNode() {
         
-        blinkLabel = SKLabelNode(fontNamed: "Optima-ExtraBlack")
-        blinkLabel.horizontalAlignmentMode = .center
-        blinkLabel.text = "Blink"
-        blinkLabel.fontColor = .blue
-        blinkLabel.fontSize = 30
-        blinkLabel.name = "blinkLabel"
-        blinkLabel.position = CGPoint(x: difficultyLabel.frame.midX + difficultyLabel.frame.width / 4, y: faceFeatureLabel.frame.minY - smileLabel.frame.height - 10)
-        blinkLabel.alpha = 0.6
+        if smileNode != nil {
+            smileNode.removeFromParent()
+        }
         
-        addChild(blinkLabel)
+        smileNode = SKSpriteNode.init(imageNamed: "Smile_Off")
+        smileNode.position = CGPoint(x: frame.midX - smileNode.frame.width / 2, y: faceFeatureNode.frame.minY - smileNode.frame.height / 2)
+        smileNode.name = "smileNode"
+        addChild(smileNode)
+    }
+    
+    func setBlinkOnNode() {
+        
+        if blinkNode != nil {
+            blinkNode.removeFromParent()
+        }
+        
+        blinkNode = SKSpriteNode.init(imageNamed: "Blink_On")
+        blinkNode.position = CGPoint(x: frame.midX + blinkNode.frame.width / 2, y: faceFeatureNode.frame.minY - blinkNode.frame.height / 2)
+        blinkNode.name = "blinkNode"
+        addChild(blinkNode)
+    }
+    
+    func setBlinkOffNode() {
+        
+        if blinkNode != nil {
+            blinkNode.removeFromParent()
+        }
+        blinkNode = SKSpriteNode.init(imageNamed: "Blink_Off")
+        blinkNode.position = CGPoint(x: frame.midX + blinkNode.frame.width / 2, y: faceFeatureNode.frame.minY - blinkNode.frame.height / 2)
+        blinkNode.name = "blinkNode"
+        addChild(blinkNode)
+    }
+    
+    func updateUIForSmileSelected() {
+        
+        if faceFeatureNode == nil {
+            createFacialFeatureNode()
+        }
+        
+        setSmileOnNode()
+        setBlinkOffNode()
+    }
+    
+    func updateUIForBlinkSelected() {
+        
+        if faceFeatureNode == nil {
+            createFacialFeatureNode()
+        }
+        
+        setSmileOffNode()
+        setBlinkOnNode()
     }
     
     
     func createFacialFeaturesUIComponents() {
         
-        createFaceFeatureLabe()
-        createSmileLabel()
-        createBlinkLabel()
+        createFacialFeatureNode()
+        
+        if facialFeaturePreference == .smile {
+           updateUIForSmileSelected()
+        }
+        else {
+            updateUIForBlinkSelected()
+        }
     }
     
     func selectionUILabelNodesPerformAction(action: SKAction) {
         
-        difficultyLabel.run(action)
-        easyLabel.run(action)
-        hardLabel.run(action)
+        difficultyNode.run(action)
+        easyNode.run(action)
+        hardNode.run(action)
         
-        faceFeatureLabel.run(action)
-        smileLabel.run(action)
-        blinkLabel.run(action)
-    }
-    
-    func selectLabelForInitialDifficultyLevel() {
-        if difficultyLevel == .easy {
-            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
-            easyLabel.alpha = 1.0
-            easyLabel.run(scaleAction)
-            hardLabel.fontColor = .gray
-        }
-        else {
-            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
-            hardLabel.alpha = 1.0
-            hardLabel.run(scaleAction)
-            easyLabel.fontColor = .gray
-        }
-    }
-    
-    func selectLabelForInitialFacialFeature() {
-        if facialFeaturePreference == .smile {
-            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
-            smileLabel.alpha = 1.0
-            smileLabel.run(scaleAction)
-            blinkLabel.fontColor = .gray
-        }
-        else {
-            let scaleAction = SKAction.scale(by: 1.25, duration: 0)
-            blinkLabel.alpha = 1.0
-            blinkLabel.run(scaleAction)
-            smileLabel.fontColor = .gray
-        }
-    }
-    
-    func wasEasyLabelTouched(touch: UITouch) -> Bool {
-        
-        let positionInScene = touch.location(in: self)
-        let nodesTouched = self.nodes(at: positionInScene)
-        
-        if !nodesTouched.isEmpty {
-            if let name = nodesTouched.first?.name {
-                
-                if name == "easyLabel" {
-                    
-                    return true
-                }
-            }
-        }
-        return false
-    }
-    
-    func wasHardLabelTouched(touch: UITouch) -> Bool {
-        
-        let positionInScene = touch.location(in: self)
-        let nodesTouched = self.nodes(at: positionInScene)
-        
-        if !nodesTouched.isEmpty {
-            if let name = nodesTouched.first?.name {
-                
-                if name == "hardLabel" {
-                    
-                    return true
-                }
-            }
-        }
-        return false
-    }
-    
-    func wasSmileLabelTouched(touch: UITouch) -> Bool {
-        
-        let positionInScene = touch.location(in: self)
-        let nodesTouched = self.nodes(at: positionInScene)
-        
-        if !nodesTouched.isEmpty {
-            if let name = nodesTouched.first?.name {
-                
-                if name == "smileLabel" {
-                    
-                    return true
-                }
-            }
-        }
-        return false
-    }
-    
-    func wasBlinkLabelTouched(touch: UITouch) -> Bool {
-        
-        let positionInScene = touch.location(in: self)
-        let nodesTouched = self.nodes(at: positionInScene)
-        
-        if !nodesTouched.isEmpty {
-            if let name = nodesTouched.first?.name {
-                
-                if name == "blinkLabel" {
-                    
-                    return true
-                }
-            }
-        }
-        return false
+        faceFeatureNode.run(action)
+        smileNode.run(action)
+        blinkNode.run(action)
     }
 
-    func selectLabel(label: SKLabelNode) {
-        label.run(SKAction.scale(by: 1.25, duration: 0.2))
-        label.alpha = 1.0
+    
+    func wasSelectionNodeTouched(touch: UITouch) -> Bool {
         
-        switch label {
-            
-        case easyLabel:
-            easyLabel.fontColor = .green
-            
-        case hardLabel:
-            hardLabel.fontColor = .red
-            
-        case smileLabel:
-            smileLabel.fontColor = .blue
-            
-        case blinkLabel:
-            blinkLabel.fontColor = .blue
-            
-        default:
-            return
+        let positionInScene = touch.location(in: self)
+        let nodesTouched = self.nodes(at: positionInScene)
+        
+        if !nodesTouched.isEmpty {
+            if let name = nodesTouched.first?.name {
+                
+                switch name {
+                    
+                case "easyNode":
+                    print("easy node tapped")
+                    difficultyLevel = .easy
+                    return true
+
+                case "hardNode":
+                    print("hard node tapped")
+                    difficultyLevel = .hard
+                    return true
+                    
+                case "smileNode":
+                    print("smile node tapped")
+                    facialFeaturePreference = .smile
+                    return true
+                    
+                case "blinkNode":
+                    print("blink node tapped")
+                    facialFeaturePreference = .blink
+                    return true
+
+                default:
+                    print("other node tapped")
+                    return false
+                }
+            }
         }
+        return false
     }
     
-    func deselectLabel(label: SKLabelNode) {
-        label.run(SKAction.scale(by: 0.80, duration: 0.2))
-        label.fontColor = UIColor.gray
-        label.alpha = 0.6
+    func postToggleFacialFeatureNotification() {
+        NotificationCenter.default.post(Notification.init(name: Notification.Name("toggleFacialFeaturePreference")))
     }
-
 }
+
 
